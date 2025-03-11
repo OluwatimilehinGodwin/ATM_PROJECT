@@ -8,7 +8,7 @@ import random
 import time
 
 # Constants
-DATA_FILE = "atm_data.json"
+DATA_FILE = "atm_dataFile.json"
 PREDICTIONS_FILE = "predictions.csv"
 
 def read_data():
