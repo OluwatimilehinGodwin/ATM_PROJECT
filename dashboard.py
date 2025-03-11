@@ -5,7 +5,6 @@ from datetime import datetime, date
 import pandas as pd
 import plotly.express as px
 import random
-import threading
 import time
 
 # Constants
@@ -24,7 +23,7 @@ def read_data():
         "transactions": [],
         "auto_refill_amount": 50000,
         "cash_trend": [],
-        "max_withdrawal_amount": 10000,
+        "max_withdrawal_amount": 20000,
         "refill_threshold": 10000,
         "withdrawal_history": [],
         "last_updated_date": None,
@@ -51,20 +50,10 @@ def simulate_random_withdrawals(num_withdrawals):
     data = read_data()
     max_withdrawal_amount = data["max_withdrawal_amount"]
 
-    for _ in range(num_withdrawals):
-        if data["total_amount"] <= data["refill_threshold"]:
-            # Auto Refill
-            data["total_amount"] += data["auto_refill_amount"]
-            data["transactions"].append({
-                "account_number": "SYSTEM",
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "amount": data['auto_refill_amount'],
-                "type": "Auto Refill"
-            })
-        else:
-            # Random Withdrawal (multiples of 500)
+    with st.spinner("⏳ Simulating withdrawals... Please wait."):
+        for _ in range(num_withdrawals):
             withdrawal_amount = random.randrange(500, max_withdrawal_amount + 1, 500)
+
             if withdrawal_amount <= data["total_amount"]:
                 data["total_amount"] -= withdrawal_amount
                 data["transactions"].append({
@@ -79,25 +68,8 @@ def simulate_random_withdrawals(num_withdrawals):
                     "amount": withdrawal_amount
                 })
 
-    write_data(data)
-    st.session_state.data = data  # Update session state
-    st.success(f"✅ {num_withdrawals} random withdrawals simulated successfully!")
-    st.rerun()
-
-def generate_random_account_number(length=10):
-    return ''.join(str(random.randint(0, 9)) for _ in range(length))
-
-def simulate_random_withdrawals(num_withdrawals):
-    data = read_data()
-    max_withdrawal_amount = data["max_withdrawal_amount"]
-    
-    with st.spinner(f"Simulating {num_withdrawals} random withdrawals..."):
-        for _ in range(num_withdrawals):
-            # Introduce a random delay between 1 and 3 seconds
-            time.sleep(random.uniform(1, 3))
-
+            # Move auto-refill check **AFTER** the withdrawal
             if data["total_amount"] <= data["refill_threshold"]:
-                # Auto Refill
                 data["total_amount"] += data["auto_refill_amount"]
                 data["transactions"].append({
                     "account_number": "SYSTEM",
@@ -106,28 +78,16 @@ def simulate_random_withdrawals(num_withdrawals):
                     "amount": data['auto_refill_amount'],
                     "type": "Auto Refill"
                 })
-            else:
-                # Random Withdrawal (multiples of 500)
-                withdrawal_amount = random.randrange(500, max_withdrawal_amount + 1, 500)
-                if withdrawal_amount <= data["total_amount"]:
-                    data["total_amount"] -= withdrawal_amount
-                    data["transactions"].append({
-                        "account_number": generate_random_account_number(),
-                        "date": datetime.now().strftime("%Y-%m-%d"),
-                        "time": datetime.now().strftime("%H:%M:%S"),
-                        "amount": -withdrawal_amount,
-                        "type": "Withdrawal"
-                    })
-                    data["withdrawal_history"].append({
-                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "amount": withdrawal_amount
-                    })
+            # Introduce random delay between 1 to 3 seconds
+            time.sleep(random.uniform(1, 3))
 
-            write_data(data)
-            st.session_state.data = data  # Update session state
+    write_data(data)
+    st.session_state.data = data  # Update session state
+    st.success(f"✅ {num_withdrawals} random withdrawals simulated successfully!")
+    st.rerun()
 
-        st.success(f"✅ {num_withdrawals} random withdrawals simulated successfully!")
-        st.rerun()
+def generate_random_account_number(length=10):
+    return ''.join(str(random.randint(0, 9)) for _ in range(length))
 
 def get_predicted_withdrawals(selected_date):
     try:
@@ -156,7 +116,7 @@ if "data" not in st.session_state:
         "transactions": [],
         "auto_refill_amount": 50000,
         "cash_trend": [],
-        "max_withdrawal_amount": 10000,
+        "max_withdrawal_amount": 20000,
         "refill_threshold": 10000,
         "withdrawal_history": [],
         "last_updated_date": None,
@@ -183,52 +143,22 @@ with tab_admin:
     # Initialize data if it hasn't been initialized, or it's a new day
     data = read_data()
     if data.get("last_updated_date") != today_date:  # Check for new day
-        data["total_amount"] += initial_amount # add the initial amount to the current total amount
+        data["total_amount"] += initial_amount  # Add the initial amount to the current total amount
         data["transactions"].append({
             "account_number": "SYSTEM",
-            "date": selected_date.strftime("%Y-%m-%d"),
+            "date": today_date,
             "time": datetime.now().strftime("%H:%M:%S"),
             "amount": initial_amount,
             "type": "Initial Deposit"
         })
         data["daily_withdrawals"] = 0  # Reset daily withdrawals
         data["daily_withdrawal_amount"] = 0  # Reset daily withdrawn amount
-        data["last_updated_date"] = today_date  # Update the last updated date
+        data["last_updated_date"] = today_date  # Update last updated date
         write_data(data)
-    st.session_state.data = data
+    st.session_state.data = data  # Ensure session state is updated
 
-    # Calculate ATM balance (Total Deposited - Amount Withdrawn)
-    total_withdrawals = sum(-t["amount"] for t in data["transactions"]
-                            if t["date"] == today_date and t["type"] == "Withdrawal")
-    atm_balance = initial_amount - total_withdrawals  # Correct calculation...
-
-    st.markdown(
-        f'''<div style="background-color:lightblue;padding:15px;border-radius:10px;text-align:left;">
-                <b style="color:black;font-size:20px;">ATM Balance</b>
-                <span style="color:green;font-size:30px;font-weight:bold;">₦{atm_balance:,.0f}</span>
-        </div>''',
-        unsafe_allow_html=True
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric(label="Total Withdrawals", value=len(
-            [t for t in data['transactions'] if t['date'] == today_date and t['type'] == 'Withdrawal']))
-
-    with col2:
-        st.metric(label="Amount Withdrawn", value=f"₦{total_withdrawals:,.0f}")
-
-    with col3:
-        today = datetime.now().strftime("%Y-%m-%d")
-        total_replenished_today = sum(t["amount"] for t in data["transactions"] if t["date"] == today and t["type"] == "Auto Refill")
-        st.metric(label="Total Replenished", value=f"₦{total_replenished_today:,.0f}")
-
-    with col4:
-        user_deposits = sum(t["amount"] for t in data["transactions"] if
-                            t["amount"] > 0 and t["account_number"] != "SYSTEM")
-        total_deposited = initial_amount + user_deposits + total_replenished_today  
-        st.metric(label="Total Deposited", value=f"₦{total_deposited:,.0f}")
+    # Correct calculation of ATM balance
+    atm_balance = data["total_amount"]  # Use the actual stored amount
 
     # Function to calculate 30% threshold
     def calculate_low_balance_threshold(initial_amount):
@@ -239,16 +169,60 @@ with tab_admin:
 
     # Determine the color of the ATM balance based on the threshold
     atm_balance_color = "green" if data['total_amount'] > low_balance_threshold else "red"
+    
+    # Alert for low cash reserve
+    low_cash_alert = "" if data['total_amount'] > low_balance_threshold else "<⚠️ Low Cash Reserve!>"
+    
     atm_balance_style = f"""
-        <div style="background-color:lightblue;padding:15px;border-radius:10px;text-align:left;">
+        <div style="background-color:lightblue;padding:15px;border-radius:10px;text-align:left;display:flex;align-items:center;">
             <b style="color:black;font-size:20px;">ATM Balance</b>
-            <span style="color:{atm_balance_color};font-size:30px;font-weight:bold; margin-left: 10px;">
+            <span style="color:{atm_balance_color};font-size:25px;font-weight:bold; margin-left: 30px;">
                 ₦{atm_balance:,.0f}
             </span>
+            <span style="color:red; font-size:18px; font-weight:bold; margin-left: 50px;">{low_cash_alert}</span>
         </div>
     """
 
-    # Create three columns with adjusted ratios
+    st.markdown(atm_balance_style, unsafe_allow_html=True)
+
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(label="Total Withdrawals", value=len(
+            [t for t in data['transactions'] if t['date'] == today_date and t['type'] == 'Withdrawal']))
+
+    with col2:
+        total_withdrawals = sum(-t["amount"] for t in data["transactions"]
+                                if t["date"] == today_date and t["type"] == "Withdrawal")
+        st.metric(label="Amount Withdrawn", value=f"₦{total_withdrawals:,.0f}")
+
+    with col3:
+        total_replenished_today = sum(t["amount"] for t in data["transactions"]
+                                      if t["date"] == today_date and t["type"] == "Auto Refill")
+        st.metric(label="Total Replenished", value=f"₦{total_replenished_today:,.0f}")
+
+    with col4:
+        user_deposits = sum(t["amount"] for t in data["transactions"]
+                            if t["amount"] > 0 and t["account_number"] != "SYSTEM")
+        total_deposited = initial_amount + user_deposits + total_replenished_today
+        st.metric(label="Total Deposited", value=f"₦{total_deposited:,.0f}")
+
+    # Define 30% low balance threshold
+    low_balance_threshold = 0.3 * atm_balance
+    
+    
+
+    # Determine ATM balance color
+    atm_balance_color = "green" if atm_balance > low_balance_threshold else "red"
+    atm_balance_style = f"""
+        <div style="background-color:lightblue;padding:15px;border-radius:10px;text-align:left;">
+            <b style="color:black;font-size:20px;">ATM Balance</b>
+            <span style="color:{atm_balance_color};font-size:30px;font-weight:bold;">₦{atm_balance:,.0f}</span>
+        </div>
+    """
+
+    # Layout for transaction records and charts
     col_df, col_chart, col_visual = st.columns([3, 3, 3])
 
     with col_df:
@@ -268,35 +242,29 @@ with tab_admin:
 
     with col_visual:
         st.subheader("_Cash Reserve Visualization_")
+        balance_percentage = min(1.0, atm_balance / initial_amount) if initial_amount != 0 else 0
+        balance_color = "green" if balance_percentage >= 0.8 else ("orange" if balance_percentage > 0.2 else "red")
 
-        # Calculate "current balance" for the visualization (same as ATM Balance)
-        visualization_balance = atm_balance
+        chart_data = pd.DataFrame({
+            "Category": ["Initial Deposit", "Current Balance"],
+            "Amount": [initial_amount, atm_balance],
+            "Color": ["green", balance_color]
+        })
+        fig_bars = px.bar(
+            chart_data,
+            x="Category",
+            y="Amount",
+            color="Category",
+            color_discrete_map={
+                "Initial Deposit": "green",
+                "Current Balance": balance_color
+            },
+            labels={"Amount": "Amount (₦)", "Category": "Category"}
+        )
+        fig_bars.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                               font_color="black")
+        st.plotly_chart(fig_bars, use_container_width=True, key="balance_bars")
 
-        if initial_amount is not None:  # Check if initial_amount is defined
-            balance_percentage = min(1.0, visualization_balance / initial_amount) if initial_amount != 0 else 0
-            balance_color = "green" if balance_percentage >= 0.8 else ("orange" if balance_percentage > 0.2 else "red")
-
-            chart_data = pd.DataFrame({
-                "Category": ["Initial Deposit", "Current Balance"],
-                "Amount": [initial_amount, visualization_balance],  # Use visualization_balance
-                "Color": ["green", balance_color]
-            })
-            fig_bars = px.bar(
-                chart_data,
-                x="Category",
-                y="Amount",
-                color="Category",
-                color_discrete_map={
-                    "Initial Deposit": "green",
-                    "Current Balance": balance_color
-                },
-                labels={"Amount": "Amount (₦)", "Category": "Category"}
-            )
-            fig_bars.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                                   font_color="black")
-            st.plotly_chart(fig_bars, use_container_width=True, key="balance_bars")
-        else:
-            st.write("Initial deposit amount not available.")
 
 with tab_atm:
     st.header("ATM Panel")
@@ -307,12 +275,11 @@ with tab_atm:
         if account_number:
             data = read_data()
             if withdrawal_amount <= data["total_amount"]:
-                now = datetime.now().strftime("%H:%M:%S")
                 data["total_amount"] -= withdrawal_amount
                 data["transactions"].append({
                     "account_number": account_number,
-                    "date": datetime.now().strftime("%Y-%m-%d"),
-                    "time": now,
+                    "date": today_date,
+                    "time": datetime.now().strftime("%H:%M:%S"),
                     "amount": -withdrawal_amount,
                     "type": "Withdrawal"
                 })
@@ -320,10 +287,23 @@ with tab_atm:
                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "amount": withdrawal_amount
                 })
+
+                # Check if auto-refill is needed after withdrawal
+                if data["total_amount"] < data["refill_threshold"]:
+                    data["total_amount"] += data["auto_refill_amount"]
+                    data["transactions"].append({
+                        "account_number": "SYSTEM",
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "amount": data['auto_refill_amount'],
+                        "type": "Auto Refill"
+                    })
+
                 write_data(data)
                 st.session_state.data = data  
                 st.success(f"✅ Withdrawal of ₦{withdrawal_amount:,.0f} successful!")
                 st.rerun()  
+  
             else:
                 st.error("❌ Insufficient balance!")
         else:
@@ -333,7 +313,7 @@ with tab_atm:
     num_transactions = st.number_input("Number of transactions to simulate", min_value=1, step=1, value=10)
     if st.button("Simulate Random Withdrawals"):
         simulate_random_withdrawals(num_transactions)
-         # Add a spinner to indicate ongoing simulation
+         
         
 with tab_settings:
     st.header("Settings")
@@ -358,39 +338,3 @@ with tab_settings:
                 st.success("Settings saved successfully!")
                 st.rerun()
 
-def atm_simulation():
-    while st.session_state.simulation_running:
-        data = read_data()
-        max_withdrawal_amount = data["max_withdrawal_amount"]
-
-        if data["total_amount"] <= data["refill_threshold"]:
-            data["total_amount"] += data["auto_refill_amount"]
-            data["transactions"].append({
-                "account_number": "SYSTEM",
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "amount": data['auto_refill_amount'],
-                "type": "Auto Refill"
-            })
-        else:
-            account_number = generate_random_account_number()
-            withdrawal_amount = random.randrange(500, max_withdrawal_amount + 1, 500)
-
-            if withdrawal_amount <= data["total_amount"]:
-                data["total_amount"] -= withdrawal_amount
-                data["transactions"].append({
-                    "account_number": account_number,
-                    "date": datetime.now().strftime("%Y-%m-%d"),
-                    "time": datetime.now().strftime("%H:%M:%S"),
-                    "amount": -withdrawal_amount,
-                    "type": "Withdrawal"
-                })
-                data["withdrawal_history"].append({
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "amount": withdrawal_amount
-                })
-
-        write_data(data)
-        st.session_state.data = data
-        time.sleep(1)
-        st.rerun()
