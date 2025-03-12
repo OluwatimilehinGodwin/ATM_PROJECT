@@ -142,19 +142,42 @@ with tab_admin:
 
     # Initialize data if it hasn't been initialized, or it's a new day
     data = read_data()
-    if data.get("last_updated_date") != today_date:  # Check for new day
-        data["total_amount"] += initial_amount  # Add the initial amount to the current total amount
-        data["transactions"].append({
-            "account_number": "SYSTEM",
-            "date": today_date,
-            "time": datetime.now().strftime("%H:%M:%S"),
-            "amount": initial_amount,
-            "type": "Initial Deposit"
-        })
-        data["daily_withdrawals"] = 0  # Reset daily withdrawals
-        data["daily_withdrawal_amount"] = 0  # Reset daily withdrawn amount
-        data["last_updated_date"] = today_date  # Update last updated date
+    
+    if data.get("last_updated_date") != today_date:  # Check for a new day
+        current_balance = data["total_amount"]
+        
+        # Determine adjustment needed
+        adjustment = initial_amount - current_balance
+        if adjustment > 0:
+            # If balance is too low, add money to reach predicted amount
+            data["total_amount"] += adjustment
+            transaction_type = "Daily Adjustment (Added)"
+        elif adjustment < 0:
+            # If balance is too high, remove money to match prediction
+            data["total_amount"] += adjustment  # This subtracts because adjustment is negative
+            transaction_type = "Daily Adjustment (Removed)"
+        else:
+            # If balance is already correct, no adjustment
+            transaction_type = None
+
+        # Record adjustment if needed
+        if transaction_type:
+            data["transactions"].append({
+                "account_number": "SYSTEM",
+                "date": today_date,
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "amount": adjustment,
+                "type": transaction_type
+            })
+        
+        # Reset daily counters
+        data["daily_withdrawals"] = 0
+        data["daily_withdrawal_amount"] = 0
+        data["last_updated_date"] = today_date
+        
+        # Save updated data
         write_data(data)
+
     st.session_state.data = data  # Ensure session state is updated
 
     # Correct calculation of ATM balance
@@ -268,13 +291,34 @@ with tab_admin:
 
 with tab_atm:
     st.header("ATM Panel")
+    
     account_number = st.text_input("Enter Account Number")
-    withdrawal_amount = st.number_input("Enter Withdrawal Amount", min_value=1, step=1, max_value=st.session_state.data["max_withdrawal_amount"])
+
+    # Ensure max withdrawal amount is set
+    max_withdrawal_amount = st.session_state.data.get("max_withdrawal_amount", 50000)
+
+    # Input field with dynamic max withdrawal limit
+    withdrawal_amount = st.number_input(
+        "Enter Withdrawal Amount", 
+        min_value=1, 
+        step=1, 
+        max_value=max_withdrawal_amount
+    )
 
     if st.button("Withdraw"):
         if account_number:
             data = read_data()
-            if withdrawal_amount <= data["total_amount"]:
+
+            # Ensure valid withdrawal amount
+            if withdrawal_amount > max_withdrawal_amount:
+                st.error(f"❌ Withdrawal exceeds max limit of ₦{max_withdrawal_amount:,}")
+                st.stop()
+            elif withdrawal_amount > data["total_amount"]:
+                st.error("❌ Insufficient balance!")
+                st.stop()
+                
+            else:
+                # Process withdrawal
                 data["total_amount"] -= withdrawal_amount
                 data["transactions"].append({
                     "account_number": account_number,
@@ -288,7 +332,7 @@ with tab_atm:
                     "amount": withdrawal_amount
                 })
 
-                # Check if auto-refill is needed after withdrawal
+                # Auto-refill if below threshold
                 if data["total_amount"] < data["refill_threshold"]:
                     data["total_amount"] += data["auto_refill_amount"]
                     data["transactions"].append({
@@ -302,17 +346,19 @@ with tab_atm:
                 write_data(data)
                 st.session_state.data = data  
                 st.success(f"✅ Withdrawal of ₦{withdrawal_amount:,.0f} successful!")
-                st.rerun()  
-  
-            else:
-                st.error("❌ Insufficient balance!")
+                st.rerun()  # Optional, but may cause lag
+
         else:
             st.error("❌ Please enter a valid account number!")
             
+            
+
+    # ATM Simulation
     st.subheader("Simulation")
     num_transactions = st.number_input("Number of transactions to simulate", min_value=1, step=1, value=10)
     if st.button("Simulate Random Withdrawals"):
         simulate_random_withdrawals(num_transactions)
+
          
         
 with tab_settings:
