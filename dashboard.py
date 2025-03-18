@@ -81,9 +81,8 @@ def simulate_random_withdrawals(num_withdrawals):
             # Introduce random delay between 1 to 3 seconds
             time.sleep(random.uniform(1, 3))
 
-            write_data(data)
-            st.session_state.data = data  # Update session state
-            st.rerun()
+    write_data(data)
+    st.session_state.data = data  # Update session state
     st.success(f"✅ {num_withdrawals} random withdrawals simulated successfully!")
     st.rerun()
 
