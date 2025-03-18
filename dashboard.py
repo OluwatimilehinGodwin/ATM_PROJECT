@@ -83,6 +83,7 @@ def simulate_random_withdrawals(num_withdrawals):
 
             write_data(data)
             st.session_state.data = data  # Update session state
+            st.rerun()
     st.success(f"✅ {num_withdrawals} random withdrawals simulated successfully!")
     st.rerun()
 
